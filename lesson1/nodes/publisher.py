@@ -8,8 +8,11 @@ class Publisher:
         # Parameters
         self.message = rospy.get_param('~message', 'Hello World!')
         # Internal variables
-        self.rate = rospy.Rate(rospy.get_param('~rate', 2.0)) 
+        rate = rospy.get_param('~rate', 2.0)
 
+        # Internal variables
+        self.rate = rospy.Rate(rate)
+        
         # Publishers
         self.pub = rospy.Publisher('/message', String, queue_size=10)
 
