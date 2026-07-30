@@ -60,7 +60,6 @@ class PurePursuitFollower:
 
     def current_pose_callback(self, msg):
         if self.path_linestring is None or self.distance_to_velocity_interpolator is None:
-            # Print out the current pose coordinates to verify data flow.
             steering_angle = 0.0
             linear_velocity = 0.0
             linear_acceleration = -3.0
@@ -84,15 +83,10 @@ class PurePursuitFollower:
             lookahead_heading = np.arctan2(lookahead_dy, lookahead_dx)
 
             # Recalculate the actual lookahead distance between the car and the lookahead point
-            ld = current_pose.distance(Point([lookahead_point.x, lookahead_point.y]))
+            ld = current_pose.distance(lookahead_point)
 
             # Angle difference alpha between current heading and lookahead heading
-            alpha = np.arctan2(
-                np.sin(lookahead_heading - heading),
-                np.cos(lookahead_heading - heading))
-
-            # Calculate steering angle using the Pure Pursuit formula
-            steering_angle = 0.0 if ld == 0 else np.arctan2(2.0 * self.wheel_base * np.sin(alpha), ld)
+            steering_angle = 0.0 if ld == 0 else np.arctan2(2.0 * self.wheel_base * np.sin(lookahead_heading - heading), ld)
             linear_velocity = float(self.distance_to_velocity_interpolator(d_ego_from_path_start))
             linear_acceleration = 0.0
 
@@ -101,7 +95,7 @@ class PurePursuitFollower:
         vehicle_cmd.header.frame_id = "base_link"
         vehicle_cmd.steering_angle = steering_angle
         vehicle_cmd.speed = linear_velocity
-        vehicle_cmd.acceleration = 0
+        vehicle_cmd.acceleration = linear_acceleration
         self.vehicle_cmd_pub.publish(vehicle_cmd)
 
     def run(self):
