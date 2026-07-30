@@ -168,12 +168,13 @@ class GlobalPlanner:
                         waypoints[best_segment_index + 1].position.z - waypoints[best_segment_index].position.z
                     )
                 )
-                projected_waypoint.speed = float(
-                    waypoints[best_segment_index].speed
-                    + best_t * (
-                        waypoints[best_segment_index + 1].speed - waypoints[best_segment_index].speed
-                    )
-                )
+                projected_waypoint.speed = 0.0
+
+                goal_waypoint = Waypoint()
+                goal_waypoint.position.x = float(self.goal_point.x)
+                goal_waypoint.position.y = float(self.goal_point.y)
+                goal_waypoint.position.z = float(projected_waypoint.position.z)
+                goal_waypoint.speed = 0.0
 
                 truncated_waypoints = []
                 for idx, waypoint in enumerate(waypoints):
@@ -183,8 +184,9 @@ class GlobalPlanner:
                         break
 
                 truncated_waypoints.append(projected_waypoint)
+                truncated_waypoints.append(goal_waypoint)
                 with self.lock:
-                    self.goal_point = BasicPoint2d(projected_waypoint.position.x, projected_waypoint.position.y)
+                    self.goal_point = BasicPoint2d(goal_waypoint.position.x, goal_waypoint.position.y)
                 return truncated_waypoints
 
         return waypoints
