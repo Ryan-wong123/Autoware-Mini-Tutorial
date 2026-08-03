@@ -53,18 +53,46 @@ class ClusterDetector:
             points_copy = points_copy.dot(tf_matrix.T)
             points[:, :3] = points_copy[:, :3]
 
-        # TODO 3: Create a DetectedObjectArray and iterate over cluster labels.
-        #         - Create DetectedObjectArray with header (stamp from msg, frame_id from self.output_frame)
-        #         - Loop over cluster labels and assign correct points to each cluster
-        #         - Skip clusters with fewer points than self.min_cluster_size
+        result_object_array = DetectedObjectArray()
+        result_object_array.header.stamp = msg.header.stamp
+        result_object_array.header.frame_id = self.output_frame
 
-            # TODO 4: Calculate centroid and convex hull for each cluster.
-            #         - Centroid: mean of x, y, z coordinates
-            #         - Convex hull: use MultiPoint(points3d[:, :2]).convex_hull,
-            #           skip clusters whose hull is not a Polygon (line or point)
-            #         - Create a DetectedObject and set: id, label, color, centroid,
-            #           convex_hull, valid, and reliability flags
-            #         - Append to the DetectedObjectArray and publish after the loop
+        for i in range(int(np.max(points[:, 3])) + 1):
+            points3d = points[points[:, 3] == i]
+
+            if len(points3d) < self.min_cluster_size:
+                continue
+
+            centroid = np.mean(points3d[:, :3], axis=0)
+
+            points_2d = MultiPoint(points3d[:, :2])
+            hull = points_2d.convex_hull
+            if hull.geom_type != "Polygon":
+                continue
+
+            min_z = float(np.min(points3d[:, 2]))
+            hull_points_2d = np.array(hull.exterior.coords)[:-1]
+            convex_hull_points = np.hstack((
+                hull_points_2d,
+                np.full((len(hull_points_2d), 1), min_z)
+            )).ravel().tolist()
+
+            obj = DetectedObject()
+            obj.id = i
+            obj.label = "unknown"
+            obj.color = BLUE80P
+            obj.valid = True
+            obj.centroid.x = centroid[0]
+            obj.centroid.y = centroid[1]
+            obj.centroid.z = centroid[2]
+            obj.convex_hull = convex_hull_points
+            obj.position_reliable = True
+            obj.velocity_reliable = False
+            obj.acceleration_reliable = False
+
+            result_object_array.objects.append(obj)
+
+        self.objects_pub.publish(result_object_array)
 
     def run(self):
         rospy.spin()
