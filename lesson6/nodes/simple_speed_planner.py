@@ -74,18 +74,26 @@ class SimpleSpeedPlanner:
             local_path_xyz = np.array([(wp.position.x, wp.position.y, wp.position.z) for wp in local_path_msg.waypoints])
             local_path_linestring = shapely.LineString(local_path_xyz)
 
-            # Project collision points onto the local path to get distances
+            # Project the current vehicle pose onto the local path so all downstream
+            # distances are measured from the ego vehicle instead of the path origin.
+            current_path_distance = local_path_linestring.project(current_position)
+
+            # Project collision points onto the local path to get distances.
             collision_points_shapely = shapely.points(structured_to_unstructured(collision_points[['x', 'y', 'z']]))
             collision_point_distances = np.array([local_path_linestring.project(cp) for cp in collision_points_shapely])
+            collision_point_distances = np.maximum(0, collision_point_distances - current_path_distance)
+
+            # Convert velocity fields from a structured array to a plain float array.
+            collision_velocities = structured_to_unstructured(collision_points[['vx', 'vy', 'vz']])
 
             # Calculate collision point speed.
             collision_point_path_headings = [self.get_heading_at_distance(local_path_linestring, d)
                                              for d in collision_point_distances]
             collision_point_speeds = np.array([self.project_vector_to_heading(heading, Vector3(vx, vy, vz))
                                                for heading, (vx, vy, vz) in zip(collision_point_path_headings,
-                                                                                 collision_points[['vx', 'vy', 'vz']])])
+                                                                                 collision_velocities)])
 
-            object_speeds = np.linalg.norm(collision_points[['vx', 'vy', 'vz']], axis=1)
+            object_speeds = np.linalg.norm(collision_velocities, axis=1)
             for object_speed, projected_speed in zip(object_speeds, collision_point_speeds):
                 rospy.loginfo("object speed: %.2f m/s, projected speed: %.2f m/s", object_speed, projected_speed)
 
