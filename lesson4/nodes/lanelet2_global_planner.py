@@ -98,6 +98,34 @@ class GlobalPlanner:
             rospy.loginfo("%s - goal position reached", rospy.get_name())
             return
 
+    def project_goal_to_last_lanelet(self, lanelet, goal_xy):
+        best_segment_index = None
+        best_t = None
+        best_point = None
+        best_distance = None
+
+        for idx in range(len(lanelet.centerline) - 1):
+            p1 = np.array([lanelet.centerline[idx].x, lanelet.centerline[idx].y], dtype=float)
+            p2 = np.array([lanelet.centerline[idx + 1].x, lanelet.centerline[idx + 1].y], dtype=float)
+            segment_vec = p2 - p1
+            segment_length_sq = np.dot(segment_vec, segment_vec)
+
+            if segment_length_sq < 1e-12:
+                continue
+
+            t = np.dot(goal_xy - p1, segment_vec) / segment_length_sq
+            t = min(max(t, 0.0), 1.0)
+            projected_point = p1 + t * segment_vec
+            distance = np.linalg.norm(projected_point - goal_xy)
+
+            if best_distance is None or distance < best_distance:
+                best_distance = distance
+                best_segment_index = idx
+                best_t = t
+                best_point = projected_point
+
+        return best_segment_index, best_t, best_point
+
     def convert_laneletseq_to_waypoints_list(self, laneletseq):
         waypoints = []
         lanelet_start_indices = []
@@ -127,30 +155,7 @@ class GlobalPlanner:
             last_lanelet = laneletseq[-1]
             last_lanelet_start_index = lanelet_start_indices[-1]
             goal_xy = np.array([goal_point.x, goal_point.y], dtype=float)
-            best_segment_index = None
-            best_t = None
-            best_point = None
-            best_distance = None
-
-            for idx in range(len(last_lanelet.centerline) - 1):
-                p1 = np.array([last_lanelet.centerline[idx].x, last_lanelet.centerline[idx].y], dtype=float)
-                p2 = np.array([last_lanelet.centerline[idx + 1].x, last_lanelet.centerline[idx + 1].y], dtype=float)
-                segment_vec = p2 - p1
-                segment_length_sq = np.dot(segment_vec, segment_vec)
-
-                if segment_length_sq < 1e-12:
-                    continue
-
-                t = np.dot(goal_xy - p1, segment_vec) / segment_length_sq
-                t = min(max(t, 0.0), 1.0)
-                projected_point = p1 + t * segment_vec
-                distance = np.linalg.norm(projected_point - goal_xy)
-
-                if best_distance is None or distance < best_distance:
-                    best_distance = distance
-                    best_segment_index = idx
-                    best_t = t
-                    best_point = projected_point
+            best_segment_index, best_t, best_point = self.project_goal_to_last_lanelet(last_lanelet, goal_xy)
 
             if best_segment_index is not None and best_point is not None:
                 projected_waypoint = Waypoint()
@@ -165,7 +170,8 @@ class GlobalPlanner:
                 )
                 projected_waypoint.speed = 0.0
 
-                truncated_waypoints = waypoints[:last_lanelet_start_index + best_segment_index + 1]
+                self.goal_point = BasicPoint2d(float(best_point[0]), float(best_point[1]))
+                truncated_waypoints = waypoints[:last_lanelet_start_index + best_segment_index]
                 truncated_waypoints.append(projected_waypoint)
                 return truncated_waypoints
 
