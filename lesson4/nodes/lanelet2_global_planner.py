@@ -2,7 +2,6 @@
 
 import numpy as np
 import rospy
-from threading import Lock
 
 from geometry_msgs.msg import PoseStamped
 from autoware_mini.msg import Path, Waypoint
@@ -42,7 +41,6 @@ class GlobalPlanner:
         self.graph = lanelet2.routing.RoutingGraph(self.lanelet2_map, traffic_rules)
 
         # Internal variables
-        self.lock = Lock()
         self.current_location = None
         self.goal_point = None
 
@@ -54,8 +52,7 @@ class GlobalPlanner:
         rospy.Subscriber('/localization/current_pose', PoseStamped, self.current_pose_callback, queue_size=1)
 
     def goal_callback(self, msg):
-        with self.lock:
-            self.goal_point = BasicPoint2d(msg.pose.position.x, msg.pose.position.y)
+        self.goal_point = BasicPoint2d(msg.pose.position.x, msg.pose.position.y)
 
         if self.current_location is None:
             return
@@ -85,8 +82,7 @@ class GlobalPlanner:
         self.publish_lane_from_waypoints_list(waypoints)
 
     def current_pose_callback(self, msg):
-        with self.lock:
-            self.current_location = BasicPoint2d(msg.pose.position.x, msg.pose.position.y)
+        self.current_location = BasicPoint2d(msg.pose.position.x, msg.pose.position.y)
 
         if self.goal_point is None:
             return
@@ -97,23 +93,19 @@ class GlobalPlanner:
         )
 
         if distance_to_goal <= self.distance_to_goal_limit:
-            rospy.loginfo("%s - goal position reached", rospy.get_name())
             self.publish_lane_from_waypoints_list([])
-            with self.lock:
-                self.goal_point = None
+            self.goal_point = None
+            rospy.loginfo("%s - goal position reached", rospy.get_name())
             return
 
     def convert_laneletseq_to_waypoints_list(self, laneletseq):
         waypoints = []
         lanelet_start_indices = []
+        goal_point = self.goal_point
 
         for j, lanelet in enumerate(laneletseq):
-            try:
+            if "speed_ref" in lanelet.attributes:
                 speed_ref_kmh = lanelet.attributes["speed_ref"]
-            except KeyError:
-                speed_ref_kmh = None
-
-            if speed_ref_kmh is not None:
                 speed = min(float(speed_ref_kmh), self.speed_limit) / 3.6
             else:
                 speed = self.speed_limit / 3.6
@@ -131,16 +123,18 @@ class GlobalPlanner:
                 waypoint.speed = speed
                 waypoints.append(waypoint)
 
-        if self.goal_point is not None and len(waypoints) >= 2:
-            goal_xy = np.array([self.goal_point.x, self.goal_point.y], dtype=float)
+        if goal_point is not None and len(waypoints) >= 2 and len(laneletseq) > 0:
+            last_lanelet = laneletseq[-1]
+            last_lanelet_start_index = lanelet_start_indices[-1]
+            goal_xy = np.array([goal_point.x, goal_point.y], dtype=float)
             best_segment_index = None
             best_t = None
             best_point = None
             best_distance = None
 
-            for idx in range(len(waypoints) - 1):
-                p1 = np.array([waypoints[idx].position.x, waypoints[idx].position.y], dtype=float)
-                p2 = np.array([waypoints[idx + 1].position.x, waypoints[idx + 1].position.y], dtype=float)
+            for idx in range(len(last_lanelet.centerline) - 1):
+                p1 = np.array([last_lanelet.centerline[idx].x, last_lanelet.centerline[idx].y], dtype=float)
+                p2 = np.array([last_lanelet.centerline[idx + 1].x, last_lanelet.centerline[idx + 1].y], dtype=float)
                 segment_vec = p2 - p1
                 segment_length_sq = np.dot(segment_vec, segment_vec)
 
@@ -163,30 +157,16 @@ class GlobalPlanner:
                 projected_waypoint.position.x = float(best_point[0])
                 projected_waypoint.position.y = float(best_point[1])
                 projected_waypoint.position.z = float(
-                    waypoints[best_segment_index].position.z
+                    last_lanelet.centerline[best_segment_index].z
                     + best_t * (
-                        waypoints[best_segment_index + 1].position.z - waypoints[best_segment_index].position.z
+                        last_lanelet.centerline[best_segment_index + 1].z
+                        - last_lanelet.centerline[best_segment_index].z
                     )
                 )
                 projected_waypoint.speed = 0.0
 
-                goal_waypoint = Waypoint()
-                goal_waypoint.position.x = float(self.goal_point.x)
-                goal_waypoint.position.y = float(self.goal_point.y)
-                goal_waypoint.position.z = float(projected_waypoint.position.z)
-                goal_waypoint.speed = 0.0
-
-                truncated_waypoints = []
-                for idx, waypoint in enumerate(waypoints):
-                    if idx <= best_segment_index:
-                        truncated_waypoints.append(waypoint)
-                    else:
-                        break
-
+                truncated_waypoints = waypoints[:last_lanelet_start_index + best_segment_index + 1]
                 truncated_waypoints.append(projected_waypoint)
-                truncated_waypoints.append(goal_waypoint)
-                with self.lock:
-                    self.goal_point = BasicPoint2d(goal_waypoint.position.x, goal_waypoint.position.y)
                 return truncated_waypoints
 
         return waypoints
