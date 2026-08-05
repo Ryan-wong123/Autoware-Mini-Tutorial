@@ -74,14 +74,10 @@ class SimpleSpeedPlanner:
             local_path_xyz = np.array([(wp.position.x, wp.position.y, wp.position.z) for wp in local_path_msg.waypoints])
             local_path_linestring = shapely.LineString(local_path_xyz)
 
-            # Project the current vehicle pose onto the local path so all downstream
-            # distances are measured from the ego vehicle instead of the path origin.
-            current_path_distance = local_path_linestring.project(current_position)
-
             # Project collision points onto the local path to get distances.
             collision_points_shapely = shapely.points(structured_to_unstructured(collision_points[['x', 'y', 'z']]))
             collision_point_distances = np.array([local_path_linestring.project(cp) for cp in collision_points_shapely])
-            collision_point_distances = np.maximum(0, collision_point_distances - current_path_distance)
+            collision_point_distances = np.maximum(0, collision_point_distances)
 
             # Convert velocity fields from a structured array to a plain float array.
             collision_velocities = structured_to_unstructured(collision_points[['vx', 'vy', 'vz']])
@@ -94,12 +90,10 @@ class SimpleSpeedPlanner:
                                                                                  collision_velocities)])
 
             object_speeds = np.linalg.norm(collision_velocities, axis=1)
-            for object_speed, projected_speed in zip(object_speeds, collision_point_speeds):
-                rospy.loginfo("object speed: %.2f m/s, projected speed: %.2f m/s", object_speed, projected_speed)
 
-            # Add braking safety distance.
+            # Add braking safety distance and account for the vehicle's front clearance.
             collision_point_braking_distances = collision_points['distance_to_stop']
-            target_distances = collision_point_distances - collision_point_braking_distances
+            target_distances = collision_point_distances - collision_point_braking_distances - self.distance_to_car_front
 
             # Modify target velocity with reaction time.
             target_distances = target_distances - self.braking_reaction_time * np.abs(collision_point_speeds)
