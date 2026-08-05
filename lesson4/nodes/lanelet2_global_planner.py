@@ -79,6 +79,11 @@ class GlobalPlanner:
         path_no_lane_change = path.getRemainingLane(start_lanelet)
 
         waypoints = self.convert_laneletseq_to_waypoints_list(path_no_lane_change)
+        if waypoints and self.goal_point is not None:
+            self.goal_point = BasicPoint2d(
+                float(waypoints[-1].position.x),
+                float(waypoints[-1].position.y),
+            )
         self.publish_lane_from_waypoints_list(waypoints)
 
     def current_pose_callback(self, msg):
@@ -170,8 +175,10 @@ class GlobalPlanner:
                 )
                 projected_waypoint.speed = 0.0
 
+                # Snap the planner goal to the projected point on the last lanelet so
+                # the current pose distance check and the published path endpoint agree.
                 self.goal_point = BasicPoint2d(float(best_point[0]), float(best_point[1]))
-                truncated_waypoints = waypoints[:last_lanelet_start_index + best_segment_index]
+                truncated_waypoints = waypoints[:last_lanelet_start_index + best_segment_index + 1]
                 truncated_waypoints.append(projected_waypoint)
                 return truncated_waypoints
 
