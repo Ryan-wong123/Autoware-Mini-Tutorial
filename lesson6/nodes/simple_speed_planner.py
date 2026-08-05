@@ -77,7 +77,6 @@ class SimpleSpeedPlanner:
             # Project collision points onto the local path to get distances.
             collision_points_shapely = shapely.points(structured_to_unstructured(collision_points[['x', 'y', 'z']]))
             collision_point_distances = np.array([local_path_linestring.project(cp) for cp in collision_points_shapely])
-            collision_point_distances = np.maximum(0, collision_point_distances)
 
             # Convert velocity fields from a structured array to a plain float array.
             collision_velocities = structured_to_unstructured(collision_points[['vx', 'vy', 'vz']])
@@ -88,8 +87,6 @@ class SimpleSpeedPlanner:
             collision_point_speeds = np.array([self.project_vector_to_heading(heading, Vector3(vx, vy, vz))
                                                for heading, (vx, vy, vz) in zip(collision_point_path_headings,
                                                                                  collision_velocities)])
-
-            object_speeds = np.linalg.norm(collision_velocities, axis=1)
 
             # Add braking safety distance and account for the vehicle's front clearance.
             collision_point_braking_distances = collision_points['distance_to_stop']
