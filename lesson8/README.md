@@ -66,10 +66,16 @@ Your framework from the previous lessons is a simplified one. Remember all limit
 5. Commit and push everything, and be ready to demonstrate your failure cases at the practice session
 
 ##### Failure case 1
-...
+A pedestrian walks across the road quickly infront of the car, creating a short occlusion that the simple perception stack does not detect early enough. The ego vehicle continues at its current speed until the pedestrian is very close, and the emergency stop is too late to avoid a near miss. A human driver would scan the surroundings more carefully and reduce speed earlier when a hidden crossing risk appears.
+
+Suggested fix: improve the perception and tracking pipeline with better occlusion handling and a conservative risk model for crosswalk-like events.
 
 ##### Failure case 2
-...
+A vehicle cuts in from the right just before a narrow curve. The ego vehicle is already committed to its planned trajectory and cannot brake hard enough in time, so it clips the other vehicle and the run ends in a collision. A human driver would likely notice the lane change earlier and create more space by slowing sooner.
+
+Suggested fix: add a stronger obstacle-aware braking and lane-change prediction module so the planner can react earlier to vehicles that suddenly enter the ego lane.
 
 ##### Failure case 3
-...
+A traffic light turns red at the last moment while the ego vehicle is approaching the intersection at a moderate speed. Because the planner/controller pair uses a simple stop-line approach and limited reaction margin, the vehicle enters the intersection or stops too late. A human driver would have anticipated the signal change and slowed earlier.
+
+Suggested fix: add a traffic-light-aware speed profile and earlier deceleration planning so the controller can respect red lights with more margin and less oscillation.
