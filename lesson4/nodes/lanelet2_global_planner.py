@@ -143,7 +143,10 @@ class GlobalPlanner:
             else:
                 speed = self.speed_limit / 3.6
 
-            lanelet_start_indices.append(len(waypoints))
+            # Record the waypoint index that corresponds to the start of this lanelet's
+            # centerline. For later lanelets we skip the duplicate first point, so the
+            # start index is one less than the current waypoint count.
+            lanelet_start_indices.append(len(waypoints) if j == 0 else len(waypoints) - 1)
 
             for i, point in enumerate(lanelet.centerline):
                 if i == 0 and j != 0:
